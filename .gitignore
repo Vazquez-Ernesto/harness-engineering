@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.env
+# Transcripts de sesiones que genera el harness
+.harness/
