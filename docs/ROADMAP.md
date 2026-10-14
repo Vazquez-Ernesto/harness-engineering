@@ -16,6 +16,19 @@ Dos caminos en paralelo: **aprender** (cada fase añade un concepto de harness e
 
 **Ejercicio para ti:** lee `src/agent/agent.ts` de arriba abajo, ejecuta `npm test` y luego pídele al agente una tarea pequeña en un proyecto de prueba. Abre el `.jsonl` de la sesión y sigue cada paso.
 
+## Fase 0.5 — Multi-proveedor e interfaz web ✅
+
+- [x] Adaptador compatible con OpenAI: Gemini, OpenRouter, Ollama (cloud y local)
+- [x] Reintentos con backoff ante límites de uso (429) y errores 5xx
+- [x] UI web en React: streaming, razonamiento, tarjetas de herramientas, aprobaciones, cancelar, cambio de modelo
+- [x] Servidor WebSocket con protección contra Cross-Site WebSocket Hijacking
+
+Siguientes pasos de la UI:
+- [ ] Ver el diff de cada edición antes de aprobarla
+- [ ] Historial de sesiones (leer los transcripts JSONL) y reanudarlas
+- [ ] Elegir el workspace desde la UI
+- [ ] Login (p. ej. con Google) cuando haya usuarios remotos — hoy solo es local
+
 ## Fase 1 — Evals: medir si el agente es bueno
 
 Sin medición no hay mejora, y sin evidencia no hay venta.
@@ -47,7 +60,6 @@ Sin medición no hay mejora, y sin evidencia no hay venta.
 ## Fase 5 — Producto
 
 - [ ] Empaquetar como CLI instalable (`npm install -g`) con onboarding de API key.
-- [ ] Interfaz web en React que consuma los mismos `AgentEvents` (la UI de terminal ya está separada del núcleo para esto).
 - [ ] Modo CI/headless: ejecutar el agente en GitHub Actions (revisar PRs, arreglar tests que fallan).
 - [ ] Telemetría opcional y panel de coste por usuario/equipo.
 

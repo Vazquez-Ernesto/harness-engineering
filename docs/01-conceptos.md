@@ -77,7 +77,30 @@ Todo lo que entra en `messages` se reenvía en **cada** llamada siguiente. Conse
 
 El modelo decide qué herramienta usar **solo** leyendo su `description` y su esquema. Una descripción ambigua produce un agente torpe. Mira `edit-file.ts`: la descripción explica que `old_string` debe ser único y que hay que leer antes de editar. Cuando el agente se equivoque de forma repetida, lo primero que debes revisar es la descripción de la herramienta y el system prompt.
 
-## 7. Cómo testear un agente (tu ventaja como QA)
+## 7. Un harness, muchos modelos: adaptadores
+
+El bucle no sabe con qué proveedor habla: depende de la interfaz `ModelClient` (`src/model/client.ts`). Cada proveedor tiene un **adaptador** que traduce:
+
+- `anthropic.ts` usa el SDK oficial de Claude.
+- `openai-compatible.ts` habla el formato *Chat Completions* de OpenAI, que imitan Gemini, OpenRouter, Ollama y muchos más. Está hecho con `fetch` a mano para que veas qué viaja por la red.
+
+Diferencias que el adaptador tiene que esconder:
+
+| Concepto | Formato interno (Anthropic) | Formato OpenAI |
+|---|---|---|
+| Pedir herramienta | bloque `tool_use` dentro del mensaje del asistente | campo `tool_calls` con `arguments` como **texto JSON** |
+| Resultado | bloque `tool_result` en un mensaje `user` | un mensaje `role: "tool"` por cada resultado |
+| System prompt | campo `system` aparte | primer mensaje con `role: "system"` |
+| Por qué paró | `stop_reason: "tool_use"` | `finish_reason: "tool_calls"` (a veces `"stop"` aunque haya llamadas) |
+| Streaming | eventos tipados del SDK | líneas `data: {...}` (Server-Sent Events) con las llamadas troceadas |
+
+Hay detalles de cada proveedor: Gemini adjunta una "firma de pensamiento" (`extra_content`) a cada llamada y exige recibirla de vuelta, y los planes gratuitos devuelven `429` a menudo, así que el adaptador reintenta con espera exponencial.
+
+## 8. La UI es otra "cara" del mismo agente
+
+La web no reimplementa nada: el servidor (`src/server/session.ts`) crea el mismo `Agent` que la CLI y convierte sus eventos (`onText`, `onToolCall`, ...) en mensajes WebSocket. Los permisos son una promesa que se resuelve cuando pulsas "Sí" o "No" en el navegador. Por eso el núcleo tiene que estar desacoplado de la interfaz desde el día uno.
+
+## 9. Cómo testear un agente (tu ventaja como QA)
 
 El modelo es no determinista y cuesta dinero, así que **se separa**: el bucle depende de la interfaz `ModelClient`, no del SDK. En los tests (`tests/agent.test.ts`) usamos `FakeModel`, un modelo falso con respuestas guionizadas:
 

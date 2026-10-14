@@ -51,3 +51,13 @@ export function estimateCostUsd(model: string, totals: UsageTotals): number | nu
     totals.outputTokens * perToken(price.output)
   );
 }
+
+/** Línea legible con tokens y coste, para la CLI. */
+export function formatUsage(model: string, usage: UsageTotals): string {
+  const cost = estimateCostUsd(model, usage);
+  const costText = cost === null ? "" : ` · ~$${cost.toFixed(4)}`;
+  return (
+    `tokens: ${usage.inputTokens} in · ${usage.outputTokens} out · ` +
+    `${usage.cacheReadTokens} caché leída · ${usage.cacheWriteTokens} caché escrita${costText}`
+  );
+}

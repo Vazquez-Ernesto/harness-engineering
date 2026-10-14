@@ -21,17 +21,32 @@ import type {
 } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import { InvalidToolInputError, type ModelClient } from "../model/client.js";
 import type { ToolRegistry } from "../tools/registry.js";
-import { ToolError, type ToolContext } from "../tools/types.js";
+import { ToolError, type ToolContext, type ToolRisk } from "../tools/types.js";
 import type { PermissionManager } from "../permissions/permissions.js";
 import { nullTranscript, type Transcript } from "../observability/transcript.js";
 import { addUsage, emptyUsage, type UsageTotals } from "../observability/usage.js";
+
+export interface ToolCallEvent {
+  /** Id del tool_use: une la llamada con su resultado y su permiso. */
+  id: string;
+  name: string;
+  summary: string;
+  risk: ToolRisk;
+}
+
+export interface ToolResultEvent {
+  id: string;
+  name: string;
+  content: string;
+  isError: boolean;
+}
 
 /** Eventos para que la interfaz (CLI, web...) muestre lo que pasa en vivo. */
 export interface AgentEvents {
   onText?: (delta: string) => void;
   onThinking?: (delta: string) => void;
-  onToolCall?: (name: string, summary: string) => void;
-  onToolResult?: (name: string, result: string, isError: boolean) => void;
+  onToolCall?: (call: ToolCallEvent) => void;
+  onToolResult?: (result: ToolResultEvent) => void;
   /** Avisos del propio harness (reintentos, límites...). */
   onNotice?: (message: string) => void;
 }
@@ -196,7 +211,7 @@ export class Agent {
   private async runTool(toolUse: BetaToolUseBlock, signal?: AbortSignal): Promise<BetaToolResultBlockParam> {
     const { tools, permissions, workspaceRoot } = this.options;
     const reply = (content: string, isError: boolean): BetaToolResultBlockParam => {
-      this.events.onToolResult?.(toolUse.name, content, isError);
+      this.events.onToolResult?.({ id: toolUse.id, name: toolUse.name, content, isError });
       this.transcript.record({ type: "tool_result", tool: toolUse.name, id: toolUse.id, is_error: isError, content });
       return { type: "tool_result", tool_use_id: toolUse.id, content, is_error: isError };
     };
@@ -217,10 +232,10 @@ export class Agent {
     }
 
     const summary = tool.summarize?.(parsed.data) ?? JSON.stringify(parsed.data);
-    this.events.onToolCall?.(tool.name, summary);
+    this.events.onToolCall?.({ id: toolUse.id, name: tool.name, summary, risk: tool.risk });
     this.transcript.record({ type: "tool_call", tool: tool.name, id: toolUse.id, input: parsed.data });
 
-    const decision = await permissions.check({ tool, input: parsed.data, summary });
+    const decision = await permissions.check({ toolUseId: toolUse.id, tool, input: parsed.data, summary });
     this.transcript.record({ type: "permission", tool: tool.name, id: toolUse.id, ...decision });
     if (!decision.allowed) {
       return reply(`El usuario no permitió esta acción (${decision.reason}). No la reintentes; pregunta cómo seguir.`, true);

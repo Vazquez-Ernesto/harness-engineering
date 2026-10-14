@@ -11,12 +11,36 @@ Tiene dos objetivos:
 
 ## Puesta en marcha
 
-Requisitos: Node.js 20 o superior y una API key de Anthropic (<https://console.anthropic.com>).
+Requisitos: Node.js 20.12 o superior y **una** API key de cualquiera de estos proveedores:
+
+| Proveedor | Variable | Modelo por defecto | Notas |
+|---|---|---|---|
+| Google Gemini | `GEMINI_API_KEY` | `gemini-2.5-flash` | Capa gratuita en AI Studio |
+| OpenRouter | `OPENROUTER_API_KEY` | `qwen/qwen3-coder:free` | Modelos gratis con sufijo `:free` |
+| Ollama | `OLLAMA_API_KEY` o `OLLAMA_BASE_URL` | `gpt-oss:120b` | Cloud con clave, o local sin clave |
+| Anthropic | `ANTHROPIC_API_KEY` | `claude-opus-5-5` | De pago |
 
 ```bash
 npm install
-export ANTHROPIC_API_KEY=sk-ant-...   # en Windows PowerShell: $env:ANTHROPIC_API_KEY="sk-ant-..."
+cp .env.example .env      # y rellena tu(s) clave(s) en .env
+```
 
+> Los modelos gratuitos cambian a menudo. Si uno da error, elige otro: en la UI se cambia desde la cabecera, en la CLI con `HARNESS_MODEL`. Para el agente conviene un modelo que soporte *tool calling* (llamadas a herramientas).
+
+### Interfaz web
+
+```bash
+npm run ui                              # compila y abre http://localhost:4317
+npm run ui -- --cwd ../mi-proyecto      # el agente trabaja sobre otro proyecto
+```
+
+En la cabecera eliges proveedor y modelo. Cada acción de escritura o ejecución aparece con botones **Sí / Siempre en esta sesión / No**, y "Detener" cancela el turno.
+
+Para desarrollar la UI con recarga en caliente, usa dos terminales: `npm run dev:server` y `npm run dev:web` (abre http://localhost:5173).
+
+### Línea de comandos
+
+```bash
 npm run dev                                   # modo interactivo en la carpeta actual
 npm run dev -- --cwd ../mi-proyecto           # trabajar sobre otro proyecto
 npm run dev -- "explica la estructura de este repo"   # una sola tarea y termina
@@ -30,27 +54,40 @@ Cuando el agente quiera escribir un archivo o ejecutar un comando, te preguntar�
 
 | Variable | Por defecto | Para qué |
 |---|---|---|
-| `HARNESS_MODEL` | `claude-opus-5-5` | Modelo de Claude |
-| `HARNESS_EFFORT` | `high` | Cuánto razona el modelo: `low`, `medium`, `high`, `xhigh`, `max` |
+| `HARNESS_PROVIDER` | el primero con clave | `anthropic`, `gemini`, `openrouter` u `ollama` |
+| `HARNESS_MODEL` | según proveedor | Modelo concreto |
+| `HARNESS_EFFORT` | `high` | Solo Anthropic: cuánto razona el modelo (`low` … `max`) |
 | `HARNESS_MAX_STEPS` | `50` | Máximo de llamadas al modelo por cada mensaje tuyo |
+| `HARNESS_PORT` | `4317` | Puerto de la UI web |
 
 ## Scripts
 
 | Comando | Qué hace |
 |---|---|
+| `npm run ui` | Compila todo y arranca la interfaz web |
+| `npm run dev:server` + `npm run dev:web` | UI en modo desarrollo (recarga en caliente) |
 | `npm run dev` | Ejecuta el CLI desde el código fuente (tsx) |
 | `npm test` | Corre los tests (vitest). **No usan la API ni gastan tokens** |
-| `npm run typecheck` | Comprueba tipos |
-| `npm run build` / `npm start` | Compila a `dist/` y ejecuta la versión compilada |
+| `npm run typecheck` | Comprueba tipos (servidor y web) |
+| `npm run build` / `npm start` | Compila a `dist/` y ejecuta la CLI compilada |
 
 ## Mapa del código
 
 ```
 src/
-├── cli.ts                  Ensambla todas las piezas y gestiona la terminal
-├── config.ts               Modelo, effort, límites (desde variables de entorno)
+├── cli.ts                  Interfaz de terminal
+├── config.ts               Proveedor, modelo, límites (desde variables de entorno / .env)
 ├── agent/agent.ts          ★ EL BUCLE DEL AGENTE: empieza a leer por aquí
-├── model/client.ts         Única pieza que habla con la API de Claude
+├── agent/create-agent.ts   Ensambla un agente (lo usan la CLI y la web)
+├── model/
+│   ├── client.ts           Contrato "un modelo de IA" que usa el bucle
+│   ├── anthropic.ts        Adaptador para Claude (SDK oficial)
+│   ├── openai-compatible.ts Adaptador para Gemini, OpenRouter, Ollama... (fetch + SSE a mano)
+│   └── providers.ts        Catálogo de proveedores y sus claves
+├── server/                 Servidor de la UI web
+│   ├── server.ts           HTTP + WebSocket (con chequeo de Origin)
+│   ├── session.ts          Una pestaña conectada = una sesión con su agente
+│   └── protocol.ts         Mensajes entre web y servidor (tipos compartidos)
 ├── tools/                  Lo que el agente puede hacer
 │   ├── types.ts            Contrato de una herramienta
 │   ├── registry.ts         Traduce herramientas al formato de la API
@@ -61,7 +98,10 @@ src/
 ├── observability/          Transcript JSONL de cada sesión + tokens y coste
 ├── prompts/system.ts       Instrucciones de trabajo del agente
 └── ui/terminal.ts          Cómo se pinta todo en la terminal
-tests/                      Tests con un modelo falso (FakeModel)
+web/src/                    La UI en React (Vite)
+├── useAgent.ts             Hook: WebSocket + reducer con el estado del chat
+└── components/             Header, Composer, ChatItemView
+tests/                      Tests con modelo y proveedor simulados (sin red ni tokens)
 ```
 
 Cada sesión queda registrada en `.harness/sessions/*.jsonl` dentro del proyecto sobre el que trabaja el agente: qué se pidió, qué respondió el modelo, qué herramientas usó, qué se aprobó y cuántos tokens costó.
@@ -70,4 +110,5 @@ Cada sesión queda registrada en `.harness/sessions/*.jsonl` dentro del proyecto
 
 - Las herramientas de archivos **no pueden salir del workspace** (se bloquean `../`, rutas absolutas y symlinks hacia fuera).
 - `bash` **no está aislado**: corre con tus permisos de usuario. La protección es que te pregunta antes de cada comando. Aislarlo en un contenedor está en el roadmap.
-- Nunca subas tu `.env` ni tu API key al repositorio (`.env` ya está en `.gitignore`).
+- La UI web solo escucha en `127.0.0.1` y rechaza conexiones WebSocket de otros orígenes: sin eso, cualquier web que visitaras podría pedirle al agente que ejecute comandos (*Cross-Site WebSocket Hijacking*).
+- Nunca subas tu `.env` ni pegues tus API keys en chats, issues o capturas (`.env` ya está en `.gitignore`).

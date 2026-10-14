@@ -4,7 +4,7 @@ import { readFileTool } from "../src/tools/read-file.js";
 import { bashTool } from "../src/tools/bash.js";
 import type { Tool } from "../src/tools/types.js";
 
-const request = (tool: Tool) => ({ tool, input: {}, summary: "" });
+const request = (tool: Tool) => ({ toolUseId: "toolu_1", tool, input: {}, summary: "" });
 
 describe("PermissionManager", () => {
   it("permite lecturas sin preguntar", async () => {

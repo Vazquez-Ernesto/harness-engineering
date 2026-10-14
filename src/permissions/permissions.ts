@@ -12,6 +12,8 @@ import type { Tool } from "../tools/types.js";
 export type ApprovalAnswer = "yes" | "no" | "always";
 
 export interface ApprovalRequest {
+  /** Id de la llamada (tool_use) que se quiere aprobar. */
+  toolUseId: string;
   tool: Tool;
   input: unknown;
   /** Resumen de una línea de lo que va a hacer. */

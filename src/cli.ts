@@ -14,14 +14,11 @@
  */
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
-import { loadConfig } from "./config.js";
-import { AnthropicModelClient } from "./model/client.js";
-import { createDefaultRegistry } from "./tools/registry.js";
-import { PermissionManager } from "./permissions/permissions.js";
+import { loadConfig, loadDotEnv } from "./config.js";
 import { JsonlTranscript } from "./observability/transcript.js";
-import { estimateCostUsd, type UsageTotals } from "./observability/usage.js";
-import { buildSystemPrompt } from "./prompts/system.js";
-import { Agent, type TurnResult } from "./agent/agent.js";
+import { formatUsage } from "./observability/usage.js";
+import { createAgent } from "./agent/create-agent.js";
+import type { TurnResult } from "./agent/agent.js";
 import { bold, createTerminalApprover, createTerminalEvents, cyan, dim, red } from "./ui/terminal.js";
 
 interface CliArgs {
@@ -43,15 +40,6 @@ function parseArgs(argv: string[]): CliArgs {
   return args;
 }
 
-function formatUsage(model: string, usage: UsageTotals): string {
-  const cost = estimateCostUsd(model, usage);
-  const costText = cost === null ? "" : ` · ~$${cost.toFixed(4)}`;
-  return (
-    `tokens: ${usage.inputTokens} in · ${usage.outputTokens} out · ` +
-    `${usage.cacheReadTokens} caché leída · ${usage.cacheWriteTokens} caché escrita${costText}`
-  );
-}
-
 const HELP = `Comandos:
   /help    muestra esta ayuda
   /usage   tokens y coste acumulados de la sesión
@@ -61,26 +49,21 @@ Ctrl+C cancela el turno en curso.`;
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  loadDotEnv();
   const config = loadConfig();
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const transcript = new JsonlTranscript(args.cwd);
 
-  const agent = new Agent({
-    model: new AnthropicModelClient(config),
-    tools: createDefaultRegistry(),
-    permissions: new PermissionManager(args.autoApprove ? "auto-approve" : "ask", createTerminalApprover(rl)),
-    system: buildSystemPrompt({
-      workspaceRoot: args.cwd,
-      platform: process.platform,
-      date: new Date().toISOString().slice(0, 10),
-    }),
+  const agent = createAgent({
+    config,
     workspaceRoot: args.cwd,
-    maxSteps: config.maxSteps,
+    approver: createTerminalApprover(rl),
+    permissionMode: args.autoApprove ? "auto-approve" : "ask",
     events: createTerminalEvents(),
     transcript,
   });
 
-  transcript.record({ type: "session_start", cwd: args.cwd, model: config.model, effort: config.effort });
+  transcript.record({ type: "session_start", cwd: args.cwd, provider: config.provider, model: config.model });
 
   // Ctrl+C: si hay un turno en marcha lo cancela; si no, sale.
   let current: AbortController | null = null;
@@ -112,7 +95,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log(`${bold("harness")} ${dim(`· ${config.model} · effort ${config.effort} · ${args.cwd}`)}`);
+  console.log(`${bold("harness")} ${dim(`· ${config.provider} · ${config.model} · ${args.cwd}`)}`);
   console.log(dim(`Transcript: ${transcript.file}`));
   console.log(dim(`Escribe /help para ver los comandos.\n`));
 

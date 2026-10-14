@@ -42,12 +42,12 @@ export function createTerminalEvents(): AgentEvents {
       switchTo("text");
       process.stdout.write(delta);
     },
-    onToolCall(name, summary) {
+    onToolCall({ name, summary }) {
       switchTo("none");
       process.stdout.write(`${cyan("⏺")} ${bold(name)} ${dim(summary)}\n`);
     },
-    onToolResult(_name, result, isError) {
-      process.stdout.write(`  ${isError ? red("✗") : green("✓")} ${dim(preview(result))}\n`);
+    onToolResult({ content, isError }) {
+      process.stdout.write(`  ${isError ? red("✗") : green("✓")} ${dim(preview(content))}\n`);
     },
     onNotice(message) {
       switchTo("none");
